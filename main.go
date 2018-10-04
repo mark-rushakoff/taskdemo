@@ -12,8 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/influxdata/flux/csv"
+	"github.com/influxdata/flux/lang"
 	"github.com/influxdata/platform"
 	phttp "github.com/influxdata/platform/http"
+	"github.com/influxdata/platform/query"
 )
 
 var (
@@ -31,7 +34,23 @@ var (
 func init() {
 	log.SetFlags(log.Ltime | log.Lshortfile | log.Lmicroseconds)
 
+	flag.Usage = func() {
+		base := path.Base(os.Args[0])
+		out := flag.CommandLine.Output()
+		fmt.Fprintf(out, "Usage: %s namespace [bootstrap|list|write|read-in|destroy]\n", base)
+		fmt.Fprintf(out, "\tbootstrap: create org, user, buckets, and authorizations using the given namespace\n")
+		fmt.Fprintf(out, "\tlist: list the entities created for the namespace\n")
+		fmt.Fprintf(out, "\twrite: write to the input bucket forever\n")
+		fmt.Fprintf(out, "\tdestroy: destroy everything in the namespace\n")
+
+		fmt.Fprintf(out, "Typical workflow:\n")
+		fmt.Fprintf(out, "\t1. run `bootstrap`\n")
+		fmt.Fprintf(out, "\t2. run `write` in another window and leave it running\n")
+		fmt.Fprintf(out, "\t3. run `read-in` to check writes to the input bucket\n")
+	}
+
 	if bootstrapToken == "" {
+		flag.Usage()
 		log.Fatalf("Environment variable BOOTSTRAP_TOKEN must be set to do anything with this demo.")
 	}
 }
@@ -47,20 +66,6 @@ func initServices() {
 }
 
 func main() {
-	flag.Usage = func() {
-		base := path.Base(os.Args[0])
-		out := flag.CommandLine.Output()
-		fmt.Fprintf(out, "Usage: %s namespace [bootstrap|list|write|destroy]\n", base)
-		fmt.Fprintf(out, "\tbootstrap: create org, user, buckets, and authorizations using the given namespace\n")
-		fmt.Fprintf(out, "\tlist: list the entities created for the namespace\n")
-		fmt.Fprintf(out, "\twrite: write to the input bucket forever\n")
-		fmt.Fprintf(out, "\tdestroy: destroy everything in the namespace\n")
-
-		fmt.Fprintf(out, "Typical workflow:\n")
-		fmt.Fprintf(out, "\t1. run `bootstrap`\n")
-		fmt.Fprintf(out, "\t2. run `write` in another window and leave it running\n")
-	}
-
 	flag.Parse()
 	if flag.NArg() != 2 {
 		flag.Usage()
@@ -77,6 +82,8 @@ func main() {
 		list()
 	case "write":
 		write()
+	case "read-in":
+		readOnce(bucketInName(), "-5s")
 	case "destroy":
 		destroy()
 	default:
@@ -127,41 +134,25 @@ func mustOrgID(ctx context.Context) platform.ID {
 func bucketInName() string {
 	return "demo-bucket-in-" + namespace
 }
-func bucketInID(ctx context.Context) (platform.ID, error) {
-	bn := bucketInName()
-	on := orgName()
-	bIn, err := buckets.FindBucket(ctx, platform.BucketFilter{Name: &bn, Organization: &on})
-	if err != nil {
-		return nil, err
-	}
-	return bIn.ID, nil
-}
-func mustBucketInID(ctx context.Context) platform.ID {
-	bInID, err := bucketInID(ctx)
-	if err != nil {
-		log.Fatalf("Failed to find bucket %q: %v", bucketInName, err)
-	}
-	return bInID
-}
 
 func bucketOutName() string {
 	return "demo-bucket-out-" + namespace
 }
-func bucketOutID(ctx context.Context) (platform.ID, error) {
-	bn := bucketOutName()
+
+func bucketID(ctx context.Context, name string) (platform.ID, error) {
 	on := orgName()
-	bOut, err := buckets.FindBucket(ctx, platform.BucketFilter{Name: &bn, Organization: &on})
+	b, err := buckets.FindBucket(ctx, platform.BucketFilter{Name: &name, Organization: &on})
 	if err != nil {
 		return nil, err
 	}
-	return bOut.ID, nil
+	return b.ID, nil
 }
-func mustBucketOutID(ctx context.Context) platform.ID {
-	bOutID, err := bucketOutID(ctx)
+func mustBucketID(ctx context.Context, name string) platform.ID {
+	id, err := bucketID(ctx, name)
 	if err != nil {
-		log.Fatalf("Failed to find bucket %q: %v", bucketOutName, err)
+		log.Fatalf("Failed to find bucket %q: %v", name, err)
 	}
-	return bOutID
+	return id
 }
 
 func bootstrap() {
@@ -199,6 +190,16 @@ func bootstrap() {
 	if err := auths.CreateAuthorization(ctx, authWriteIn); err != nil {
 		log.Fatalf("Failed to create authorization to write to %s", bIn.Name)
 	}
+
+	authReadIn := &platform.Authorization{
+		UserID: u.ID,
+		Permissions: []platform.Permission{
+			platform.ReadBucketPermission(bIn.ID),
+		},
+	}
+	if err := auths.CreateAuthorization(ctx, authReadIn); err != nil {
+		log.Fatalf("Failed to create authorization to read from %s", bIn.Name)
+	}
 }
 
 func list() {
@@ -218,14 +219,14 @@ func list() {
 		log.Printf("Could not find org %q; continuing...", orgName())
 	}
 
-	bInID, err := bucketInID(ctx)
+	bInID, err := bucketID(ctx, bucketInName())
 	if err == nil {
 		log.Printf("Bucket %q with ID %s", bucketInName(), bInID.String())
 	} else {
 		log.Printf("Could not find bucket %q; continuing...", bucketInName())
 	}
 
-	bOutID, err := bucketOutID(ctx)
+	bOutID, err := bucketID(ctx, bucketOutName())
 	if err == nil {
 		log.Printf("Bucket %q with ID %s", bucketOutName(), bOutID.String())
 	} else {
@@ -239,10 +240,7 @@ func write() {
 
 	bn := bucketInName()
 	on := orgName()
-	bIn, err := buckets.FindBucket(ctx, platform.BucketFilter{Name: &bn, Organization: &on})
-	if err != nil {
-		log.Fatalf("Failed to find bucket %q: %v", bn, err)
-	}
+	bInID := mustBucketID(ctx, bn)
 
 	as, _, err := auths.FindAuthorizations(ctx, platform.AuthorizationFilter{
 		UserID: &uID,
@@ -252,7 +250,7 @@ func write() {
 	}
 	var writeAuth *platform.Authorization
 	for _, a := range as {
-		if a.Allowed(platform.WriteBucketPermission(bIn.ID)) {
+		if a.Allowed(platform.WriteBucketPermission(bInID)) {
 			writeAuth = a
 			break
 		}
@@ -289,6 +287,54 @@ func write() {
 		}
 
 		log.Printf("Successfully wrote %q to bucket %q in org %q", write, bn, on)
+	}
+}
+
+func readOnce(bucketName, startRange string) {
+	ctx := context.Background()
+	oID := mustOrgID(ctx)
+	bID := mustBucketID(ctx, bucketName)
+	uID := mustUserID(ctx)
+
+	as, _, err := auths.FindAuthorizations(ctx, platform.AuthorizationFilter{
+		UserID: &uID,
+	})
+	if err != nil {
+		log.Fatalf("Failed to find authorizations for user with ID %s: %v", uID.String(), err)
+	}
+	var readAuth *platform.Authorization
+	for _, a := range as {
+		if a.Allowed(platform.ReadBucketPermission(bID)) {
+			readAuth = a
+			break
+		}
+	}
+	if readAuth == nil {
+		log.Printf("Unable to find existing auth for user %q to read from bucket %q.", userName(), bucketName)
+		log.Printf("Found authorizations:")
+		for _, a := range as {
+			log.Printf("\t%v\n", a)
+		}
+		log.Fatalf("Giving up.")
+	}
+
+	q := fmt.Sprintf("from(bucket:%q) |> range(start:%s)", bucketName, startRange)
+	fqs := phttp.FluxQueryService{Addr: *apiEndpoint, Token: readAuth.Token}
+	it, err := fqs.Query(ctx, &query.Request{
+		Authorization:  readAuth,
+		OrganizationID: oID,
+
+		Compiler: lang.FluxCompiler{Query: q},
+	})
+	if err != nil {
+		log.Fatalf("Failed to query: %v", err)
+	}
+	log.Printf("Executed query: %s", q)
+
+	// This isn't printing anything. Unclear if this is my error or upstream.
+	enc := csv.NewMultiResultEncoder(csv.DefaultEncoderConfig())
+	if _, err := enc.Encode(os.Stdout, it); err != nil {
+		log.Fatalf("Failed to encode csv: %v", err)
 	}
 }
 
