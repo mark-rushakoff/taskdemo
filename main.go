@@ -41,6 +41,8 @@ func init() {
 		fmt.Fprintf(out, "\tbootstrap: create org, user, buckets, and authorizations using the given namespace\n")
 		fmt.Fprintf(out, "\tlist: list the entities created for the namespace\n")
 		fmt.Fprintf(out, "\twrite: write to the input bucket forever\n")
+		fmt.Fprintf(out, "\tread-in: read recent data from the input bucket\n")
+		fmt.Fprintf(out, "\tdownsample-once: manually downsample once from the input bucket to the output bucket\n")
 		fmt.Fprintf(out, "\tdestroy: destroy everything in the namespace\n")
 
 		fmt.Fprintf(out, "Typical workflow:\n")
@@ -84,6 +86,8 @@ func main() {
 		write()
 	case "read-in":
 		readOnce(bucketInName(), "-5s")
+	case "downsample-once":
+		downsampleOnce("-5s")
 	case "destroy":
 		destroy()
 	default:
@@ -190,6 +194,7 @@ func bootstrap() {
 	if err := auths.CreateAuthorization(ctx, authWriteIn); err != nil {
 		log.Fatalf("Failed to create authorization to write to %s", bIn.Name)
 	}
+	log.Printf("Created authorization to write to bucket %s", bIn.Name)
 
 	authReadIn := &platform.Authorization{
 		UserID: u.ID,
@@ -200,6 +205,19 @@ func bootstrap() {
 	if err := auths.CreateAuthorization(ctx, authReadIn); err != nil {
 		log.Fatalf("Failed to create authorization to read from %s", bIn.Name)
 	}
+	log.Printf("Created authorization to read from bucket %s", bIn.Name)
+
+	authReadInWriteOut := &platform.Authorization{
+		UserID: u.ID,
+		Permissions: []platform.Permission{
+			platform.ReadBucketPermission(bIn.ID),
+			platform.WriteBucketPermission(bOut.ID),
+		},
+	}
+	if err := auths.CreateAuthorization(ctx, authReadInWriteOut); err != nil {
+		log.Fatalf("Failed to create authorization to read from %s and write to %s", bIn.Name, bOut.Name)
+	}
+	log.Printf("Created authorization to read from bucket %s and write to bucket %s", bIn.Name, bOut.Name)
 }
 
 func list() {
@@ -313,7 +331,7 @@ func readOnce(bucketName, startRange string) {
 		log.Printf("Unable to find existing auth for user %q to read from bucket %q.", userName(), bucketName)
 		log.Printf("Found authorizations:")
 		for _, a := range as {
-			log.Printf("\t%v\n", a)
+			log.Printf("\t%#v\n", a)
 		}
 		log.Fatalf("Giving up.")
 	}
@@ -331,7 +349,60 @@ func readOnce(bucketName, startRange string) {
 	}
 	log.Printf("Executed query: %s", q)
 
-	// This isn't printing anything. Unclear if this is my error or upstream.
+	enc := csv.NewMultiResultEncoder(csv.DefaultEncoderConfig())
+	if _, err := enc.Encode(os.Stdout, it); err != nil {
+		log.Fatalf("Failed to encode csv: %v", err)
+	}
+}
+
+func downsampleOnce(startRange string) {
+	ctx := context.Background()
+
+	oID := mustOrgID(ctx)
+	bInID := mustBucketID(ctx, bucketInName())
+	bOutID := mustBucketID(ctx, bucketOutName())
+	uID := mustUserID(ctx)
+	on := orgName()
+
+	as, _, err := auths.FindAuthorizations(ctx, platform.AuthorizationFilter{
+		UserID: &uID,
+	})
+	if err != nil {
+		log.Fatalf("Failed to find authorizations for user with ID %s: %v", uID.String(), err)
+	}
+	var readWriteAuth *platform.Authorization
+	for _, a := range as {
+		if a.Allowed(platform.ReadBucketPermission(bInID)) && a.Allowed(platform.WriteBucketPermission(bOutID)) {
+			readWriteAuth = a
+			break
+		}
+	}
+	if readWriteAuth == nil {
+		log.Printf("Unable to find existing auth for user %q to read from bucket %q AND write to bucket %q.", userName(), bucketInName(), bucketOutName())
+		log.Printf("Found authorizations:")
+		for _, a := range as {
+			log.Printf("\t%#v\n", a)
+		}
+		log.Fatalf("Giving up.")
+	}
+
+	q := fmt.Sprintf(
+		`from(bucket:%q) |> range(start:%s) |> sum() |> duplicate(column: "_stop", as: "_time") |> to(bucket:%q, org:%q)`,
+		bucketInName(), startRange, bucketOutName(), on,
+	)
+
+	fqs := phttp.FluxQueryService{Addr: *apiEndpoint, Token: readWriteAuth.Token}
+	it, err := fqs.Query(ctx, &query.Request{
+		Authorization:  readWriteAuth,
+		OrganizationID: oID,
+
+		Compiler: lang.FluxCompiler{Query: q},
+	})
+	if err != nil {
+		log.Fatalf("Failed to query: %v", err)
+	}
+	log.Printf("Executed query: %s", q)
+
 	enc := csv.NewMultiResultEncoder(csv.DefaultEncoderConfig())
 	if _, err := enc.Encode(os.Stdout, it); err != nil {
 		log.Fatalf("Failed to encode csv: %v", err)
