@@ -104,7 +104,7 @@ func userID(ctx context.Context) (platform.ID, error) {
 	un := userName()
 	u, err := users.FindUser(ctx, platform.UserFilter{Name: &un})
 	if err != nil {
-		return nil, err
+		return platform.InvalidID(), err
 	}
 	return u.ID, nil
 }
@@ -123,7 +123,7 @@ func orgID(ctx context.Context) (platform.ID, error) {
 	on := orgName()
 	o, err := orgs.FindOrganization(context.Background(), platform.OrganizationFilter{Name: &on})
 	if err != nil {
-		return nil, err
+		return platform.InvalidID(), err
 	}
 	return o.ID, nil
 }
@@ -147,7 +147,7 @@ func bucketID(ctx context.Context, name string) (platform.ID, error) {
 	on := orgName()
 	b, err := buckets.FindBucket(ctx, platform.BucketFilter{Name: &name, Organization: &on})
 	if err != nil {
-		return nil, err
+		return platform.InvalidID(), err
 	}
 	return b.ID, nil
 }
