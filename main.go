@@ -192,7 +192,7 @@ func bootstrap() {
 		},
 	}
 	if err := auths.CreateAuthorization(ctx, authWriteIn); err != nil {
-		log.Fatalf("Failed to create authorization to write to %s", bIn.Name)
+		log.Fatalf("Failed to create authorization to write to %s: %v", bIn.Name, err)
 	}
 	log.Printf("Created authorization to write to bucket %s", bIn.Name)
 
@@ -203,7 +203,7 @@ func bootstrap() {
 		},
 	}
 	if err := auths.CreateAuthorization(ctx, authReadIn); err != nil {
-		log.Fatalf("Failed to create authorization to read from %s", bIn.Name)
+		log.Fatalf("Failed to create authorization to read from %s: %v", bIn.Name, err)
 	}
 	log.Printf("Created authorization to read from bucket %s", bIn.Name)
 
@@ -215,7 +215,7 @@ func bootstrap() {
 		},
 	}
 	if err := auths.CreateAuthorization(ctx, authReadInWriteOut); err != nil {
-		log.Fatalf("Failed to create authorization to read from %s and write to %s", bIn.Name, bOut.Name)
+		log.Fatalf("Failed to create authorization to read from %s and write to %s: %v", bIn.Name, bOut.Name, err)
 	}
 	log.Printf("Created authorization to read from bucket %s and write to bucket %s", bIn.Name, bOut.Name)
 }
