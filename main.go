@@ -264,6 +264,21 @@ func list() {
 	} else {
 		log.Printf("Could not find bucket %q; continuing...", bucketOutName())
 	}
+
+	as, _, err := auths.FindAuthorizations(ctx, platform.AuthorizationFilter{
+		UserID: &uID,
+	})
+	if err == nil {
+		for _, a := range as {
+			log.Printf("Authorization with ID %s:", a.ID.String())
+			log.Printf("\tToken: %s", a.Token)
+			for _, p := range a.Permissions {
+				log.Printf("\tPermission: action=%s Resource=%s", p.Action, p.Resource)
+			}
+		}
+	} else {
+		log.Printf("Could not find authorizations for user %q; continuing...", userName())
+	}
 }
 
 func write() {
@@ -278,7 +293,7 @@ func write() {
 		UserID: &uID,
 	})
 	if err != nil {
-		log.Fatalf("Failed to find authorizations for user with ID %s: %v", bn, err)
+		log.Fatalf("Failed to find authorizations for user with ID %s: %v", uID.String(), err)
 	}
 	var writeAuth *platform.Authorization
 	for _, a := range as {
