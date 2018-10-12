@@ -37,11 +37,12 @@ func init() {
 	flag.Usage = func() {
 		base := path.Base(os.Args[0])
 		out := flag.CommandLine.Output()
-		fmt.Fprintf(out, "Usage: %s namespace [bootstrap|list|write|read-in|destroy]\n", base)
+		fmt.Fprintf(out, "Usage: %s namespace [bootstrap|list|write|read-in|read-out|destroy]\n", base)
 		fmt.Fprintf(out, "\tbootstrap: create org, user, buckets, and authorizations using the given namespace\n")
 		fmt.Fprintf(out, "\tlist: list the entities created for the namespace\n")
 		fmt.Fprintf(out, "\twrite: write to the input bucket forever\n")
 		fmt.Fprintf(out, "\tread-in: read recent data from the input bucket\n")
+		fmt.Fprintf(out, "\tread-out: read recent data from the output bucket\n")
 		fmt.Fprintf(out, "\tdownsample-once: manually downsample once from the input bucket to the output bucket\n")
 		fmt.Fprintf(out, "\tdestroy: destroy everything in the namespace\n")
 
@@ -86,6 +87,8 @@ func main() {
 		write()
 	case "read-in":
 		readOnce(bucketInName(), "-5s")
+	case "read-out":
+		readOnce(bucketOutName(), "-5s")
 	case "downsample-once":
 		downsampleOnce("-5s")
 	case "destroy":
@@ -218,6 +221,17 @@ func bootstrap() {
 		log.Fatalf("Failed to create authorization to read from %s and write to %s: %v", bIn.Name, bOut.Name, err)
 	}
 	log.Printf("Created authorization to read from bucket %s and write to bucket %s", bIn.Name, bOut.Name)
+
+	authReadOut := &platform.Authorization{
+		UserID: u.ID,
+		Permissions: []platform.Permission{
+			platform.ReadBucketPermission(bOut.ID),
+		},
+	}
+	if err := auths.CreateAuthorization(ctx, authReadOut); err != nil {
+		log.Fatalf("Failed to create authorization to read from %s: %v", bOut.Name, err)
+	}
+	log.Printf("Created authorization to read from bucket %s", bOut.Name)
 }
 
 func list() {
