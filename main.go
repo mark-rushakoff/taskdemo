@@ -44,12 +44,16 @@ func init() {
 		fmt.Fprintf(out, "\tread-in: read recent data from the input bucket\n")
 		fmt.Fprintf(out, "\tread-out: read recent data from the output bucket\n")
 		fmt.Fprintf(out, "\tdownsample-once: manually downsample once from the input bucket to the output bucket\n")
+		fmt.Fprintf(out, "\tcreate-task: create a task that downsamples from the input bucket to the output bucket\n")
 		fmt.Fprintf(out, "\tdestroy: destroy everything in the namespace\n")
 
 		fmt.Fprintf(out, "Typical workflow:\n")
 		fmt.Fprintf(out, "\t1. run `bootstrap`\n")
 		fmt.Fprintf(out, "\t2. run `write` in another window and leave it running\n")
 		fmt.Fprintf(out, "\t3. run `read-in` to check writes to the input bucket\n")
+		fmt.Fprintf(out, "\t4. run `downsample-once` to put a single write to the output bucket\n")
+		fmt.Fprintf(out, "\t5. run `read-out` to confirm the previous write to the output bucket\n")
+		fmt.Fprintf(out, "\t6. run `create-task` to make a task that continually downsamples to the output bucket\n")
 	}
 
 	if bootstrapToken == "" {
@@ -88,9 +92,11 @@ func main() {
 	case "read-in":
 		readOnce(bucketInName(), "-5s")
 	case "read-out":
-		readOnce(bucketOutName(), "-5s")
+		readOnce(bucketOutName(), "-15s")
 	case "downsample-once":
 		downsampleOnce("-5s")
+	case "create-task":
+		createTask()
 	case "destroy":
 		destroy()
 	default:
@@ -210,17 +216,18 @@ func bootstrap() {
 	}
 	log.Printf("Created authorization to read from bucket %s", bIn.Name)
 
-	authReadInWriteOut := &platform.Authorization{
+	authReadInWriteOutCreateTask := &platform.Authorization{
 		UserID: u.ID,
 		Permissions: []platform.Permission{
 			platform.ReadBucketPermission(bIn.ID),
 			platform.WriteBucketPermission(bOut.ID),
+			platform.Permission{Action: platform.CreateAction, Resource: platform.TaskResource(o.ID)},
 		},
 	}
-	if err := auths.CreateAuthorization(ctx, authReadInWriteOut); err != nil {
+	if err := auths.CreateAuthorization(ctx, authReadInWriteOutCreateTask); err != nil {
 		log.Fatalf("Failed to create authorization to read from %s and write to %s: %v", bIn.Name, bOut.Name, err)
 	}
-	log.Printf("Created authorization to read from bucket %s and write to bucket %s", bIn.Name, bOut.Name)
+	log.Printf("Created authorization to read from bucket %s, write to bucket %s, and create tasks in org %q", bIn.Name, bOut.Name, o.Name)
 
 	authReadOut := &platform.Authorization{
 		UserID: u.ID,
@@ -436,6 +443,59 @@ func downsampleOnce(startRange string) {
 	if _, err := enc.Encode(os.Stdout, it); err != nil {
 		log.Fatalf("Failed to encode csv: %v", err)
 	}
+}
+
+func createTask() {
+	ctx := context.Background()
+
+	oID := mustOrgID(ctx)
+	bInID := mustBucketID(ctx, bucketInName())
+	bOutID := mustBucketID(ctx, bucketOutName())
+	uID := mustUserID(ctx)
+
+	as, _, err := auths.FindAuthorizations(ctx, platform.AuthorizationFilter{
+		UserID: &uID,
+	})
+	if err != nil {
+		log.Fatalf("Failed to find authorizations for user with ID %s: %v", uID.String(), err)
+	}
+	var readWriteCreateAuth *platform.Authorization
+	for _, a := range as {
+		if a.Allowed(platform.ReadBucketPermission(bInID)) && a.Allowed(platform.WriteBucketPermission(bOutID)) &&
+			a.Allowed(platform.Permission{Action: platform.CreateAction, Resource: platform.TaskResource(oID)}) {
+			readWriteCreateAuth = a
+			break
+		}
+	}
+
+	if readWriteCreateAuth == nil {
+		log.Printf("Unable to find existing auth for user %q to read from bucket %q AND write to bucket %q AND create tasks in org %s", userName(), bucketInName(), bucketOutName(), oID)
+		log.Printf("Found authorizations:")
+		for _, a := range as {
+			log.Printf("\t%#v\n", a)
+		}
+		log.Fatalf("Giving up.")
+	}
+
+	taskName := fmt.Sprintf("demo-%d", time.Now().Unix())
+	f := fmt.Sprintf(
+		`option task = { name: %q, every: 5s } from(bucket:%q) |> range(start:-5s) |> last() |> to(bucket:%q, org:%q)`,
+		taskName, bucketInName(), bucketOutName(), orgName(),
+	)
+
+	ts := phttp.TaskService{Addr: *apiEndpoint, Token: readWriteCreateAuth.Token}
+	t := &platform.Task{
+		Organization: oID,
+		Owner: platform.User{
+			ID: uID,
+		},
+		Flux: f,
+	}
+	if err := ts.CreateTask(ctx, t); err != nil {
+		log.Fatalf("Failed to create task: %v", err)
+	}
+
+	log.Printf("Created task with ID %s", t.ID)
 }
 
 func destroy() {
