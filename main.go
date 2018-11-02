@@ -416,7 +416,7 @@ func downsampleOnce(startRange string) {
 	}
 
 	q := fmt.Sprintf(
-		`from(bucket:%q) |> range(start:%s) |> sum() |> duplicate(column: "_stop", as: "_time") |> to(bucket:%q, org:%q)`,
+		`from(bucket:%q) |> range(start:%s) |> last() |> to(bucket:%q, org:%q) |> yield()`,
 		bucketInName(), startRange, bucketOutName(), on,
 	)
 

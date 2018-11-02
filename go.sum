@@ -127,8 +127,8 @@ github.com/influxdata/influxql v0.0.0-20180925231337-1cbfca8e56b6 h1:CFx+pP90q/q
 github.com/influxdata/influxql v0.0.0-20180925231337-1cbfca8e56b6/go.mod h1:KpVI7okXjK6PRi3Z5B+mtKZli+R1DnZgb3N+tzevNgo=
 github.com/influxdata/line-protocol v0.0.0-20180522152040-32c6aa80de5e h1:/o3vQtpWJhvnIbXley4/jwzzqNeigJK9z+LZcJZ9zfM=
 github.com/influxdata/line-protocol v0.0.0-20180522152040-32c6aa80de5e/go.mod h1:4kt73NQhadE3daL3WhR5EJ/J2ocX0PZzwxQ0gXJ7oFE=
-github.com/influxdata/platform v0.0.0-20181101213319-34ab06634f2f h1:CvLCHjL+Z5caLLmqLY9UITfjxDGd/rxuapdl/x1v0CQ=
-github.com/influxdata/platform v0.0.0-20181101213319-34ab06634f2f/go.mod h1:H3xeblJvSl7ZxtBrcbQ5QETIlAT08ZFpp+/Gh6cDkBY=
+github.com/influxdata/platform v0.0.0-20181102184928-cff063400194 h1:Hj1wJkt0TrJ+bZ5EXgVtTUKYkE9/wFJW9C7hLT04wrE=
+github.com/influxdata/platform v0.0.0-20181102184928-cff063400194/go.mod h1:H3xeblJvSl7ZxtBrcbQ5QETIlAT08ZFpp+/Gh6cDkBY=
 github.com/influxdata/tdigest v0.0.0-20180711151920-a7d76c6f093a h1:vMqgISSVkIqWxCIZs8m1L4096temR7IbYyNdMiBxSPA=
 github.com/influxdata/tdigest v0.0.0-20180711151920-a7d76c6f093a/go.mod h1:9GkyshztGufsdPQWjH+ifgnIr3xNUL5syI70g2dzU1o=
 github.com/influxdata/usage-client v0.0.0-20160829180054-6d3895376368 h1:+TUUmaFa4YD1Q+7bH9o5NCHQGPMqZCYJiNW6lIIS9z4=
