@@ -479,7 +479,7 @@ func createTask() {
 
 	taskName := fmt.Sprintf("demo-%d", time.Now().Unix())
 	f := fmt.Sprintf(
-		`option task = { name: %q, every: 5s } from(bucket:%q) |> range(start:-5s) |> last() |> to(bucket:%q, org:%q)`,
+		`option task = { name: %q, every: 5s } from(bucket:%q) |> range(start:-5s) |> last() |> to(bucket:%q, org:%q) |> yield()`,
 		taskName, bucketInName(), bucketOutName(), orgName(),
 	)
 
