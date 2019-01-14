@@ -208,7 +208,7 @@ func bootstrap() {
 	}
 	log.Printf("Created authorization to write to bucket %s", bIn.Name)
 
-	pReadInBucket, err := platform.NewPermissionAtID(bIn.ID, platform.WriteAction, platform.BucketsResource, o.ID)
+	pReadInBucket, err := platform.NewPermissionAtID(bIn.ID, platform.ReadAction, platform.BucketsResource, o.ID)
 	if err != nil {
 		log.Fatalf("Failed to build read input bucket permission: %v", err)
 	}
@@ -298,7 +298,11 @@ func list() {
 			log.Printf("Authorization with ID %s:", a.ID.String())
 			log.Printf("\tToken: %s", a.Token)
 			for _, p := range a.Permissions {
-				log.Printf("\tPermission: action=%s Resource=%s", p.Action, p.Resource)
+				var idSuf string
+				if p.ID != nil {
+					idSuf = " ResourceID=" + p.ID.String()
+				}
+				log.Printf("\tPermission: orgID=%s action=%s Resource=%s%s", p.OrgID, p.Action, p.Resource, idSuf)
 			}
 		}
 	} else {
