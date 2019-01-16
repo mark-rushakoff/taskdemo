@@ -194,7 +194,7 @@ func bootstrap() {
 	}
 	log.Printf("Created bucket %q with ID %s", bOut.Name, bOut.ID.String())
 
-	pWriteInBucket, err := platform.NewPermissionAtID(bIn.ID, platform.WriteAction, platform.BucketsResource, o.ID)
+	pWriteInBucket, err := platform.NewPermissionAtID(bIn.ID, platform.WriteAction, platform.BucketsResourceType, o.ID)
 	if err != nil {
 		log.Fatalf("Failed to build write input bucket permission: %v", err)
 	}
@@ -208,7 +208,7 @@ func bootstrap() {
 	}
 	log.Printf("Created authorization to write to bucket %s", bIn.Name)
 
-	pReadInBucket, err := platform.NewPermissionAtID(bIn.ID, platform.ReadAction, platform.BucketsResource, o.ID)
+	pReadInBucket, err := platform.NewPermissionAtID(bIn.ID, platform.ReadAction, platform.BucketsResourceType, o.ID)
 	if err != nil {
 		log.Fatalf("Failed to build read input bucket permission: %v", err)
 	}
@@ -222,11 +222,11 @@ func bootstrap() {
 	}
 	log.Printf("Created authorization to read from bucket %s", bIn.Name)
 
-	pWriteOutBucket, err := platform.NewPermissionAtID(bOut.ID, platform.WriteAction, platform.BucketsResource, o.ID)
+	pWriteOutBucket, err := platform.NewPermissionAtID(bOut.ID, platform.WriteAction, platform.BucketsResourceType, o.ID)
 	if err != nil {
 		log.Fatalf("Failed to build write output bucket permission: %v", err)
 	}
-	pCreateTask, err := platform.NewPermission(platform.WriteAction, platform.TasksResource, o.ID)
+	pCreateTask, err := platform.NewPermission(platform.WriteAction, platform.TasksResourceType, o.ID)
 	if err != nil {
 		log.Fatalf("Failed to build write task permission")
 	}
@@ -244,7 +244,7 @@ func bootstrap() {
 	}
 	log.Printf("Created authorization to read from bucket %s, write to bucket %s, and create tasks in org %q", bIn.Name, bOut.Name, o.Name)
 
-	pReadOutBucket, err := platform.NewPermissionAtID(bOut.ID, platform.ReadAction, platform.BucketsResource, o.ID)
+	pReadOutBucket, err := platform.NewPermissionAtID(bOut.ID, platform.ReadAction, platform.BucketsResourceType, o.ID)
 	if err != nil {
 		log.Fatalf("Failed to build read output bucket permission: %v", err)
 	}
@@ -299,10 +299,10 @@ func list() {
 			log.Printf("\tToken: %s", a.Token)
 			for _, p := range a.Permissions {
 				var idSuf string
-				if p.ID != nil {
-					idSuf = " ResourceID=" + p.ID.String()
+				if p.Resource.ID != nil {
+					idSuf = " ResourceID=" + p.Resource.ID.String()
 				}
-				log.Printf("\tPermission: orgID=%s action=%s Resource=%s%s", p.OrgID, p.Action, p.Resource, idSuf)
+				log.Printf("\tPermission: orgID=%s action=%s Resource=%s%s", p.Resource.OrgID, p.Action, p.Resource.Type, idSuf)
 			}
 		}
 	} else {
@@ -324,7 +324,7 @@ func write() {
 	if err != nil {
 		log.Fatalf("Failed to find authorizations for user with ID %s: %v", uID.String(), err)
 	}
-	pWriteIn, err := platform.NewPermissionAtID(bInID, platform.WriteAction, platform.BucketsResource, mustOrgID(ctx))
+	pWriteIn, err := platform.NewPermissionAtID(bInID, platform.WriteAction, platform.BucketsResourceType, mustOrgID(ctx))
 	if err != nil {
 		log.Fatalf("Failed to build permission for writing input bucket: %v", err)
 	}
@@ -382,7 +382,7 @@ func readOnce(bucketName, startRange string) {
 	if err != nil {
 		log.Fatalf("Failed to find authorizations for user with ID %s: %v", uID.String(), err)
 	}
-	pReadIn, err := platform.NewPermissionAtID(bID, platform.ReadAction, platform.BucketsResource, oID)
+	pReadIn, err := platform.NewPermissionAtID(bID, platform.ReadAction, platform.BucketsResourceType, oID)
 	if err != nil {
 		log.Fatalf("Failed to build permission for reading input bucket: %v", err)
 	}
@@ -436,11 +436,11 @@ func downsampleOnce(startRange string) {
 	if err != nil {
 		log.Fatalf("Failed to find authorizations for user with ID %s: %v", uID.String(), err)
 	}
-	pReadIn, err := platform.NewPermissionAtID(bInID, platform.ReadAction, platform.BucketsResource, oID)
+	pReadIn, err := platform.NewPermissionAtID(bInID, platform.ReadAction, platform.BucketsResourceType, oID)
 	if err != nil {
 		log.Fatalf("Failed to build permission for reading input bucket: %v", err)
 	}
-	pWriteOut, err := platform.NewPermissionAtID(bOutID, platform.WriteAction, platform.BucketsResource, oID)
+	pWriteOut, err := platform.NewPermissionAtID(bOutID, platform.WriteAction, platform.BucketsResourceType, oID)
 	if err != nil {
 		log.Fatalf("Failed to build write output bucket permission: %v", err)
 	}
@@ -497,15 +497,15 @@ func createTask() {
 	if err != nil {
 		log.Fatalf("Failed to find authorizations for user with ID %s: %v", uID.String(), err)
 	}
-	pReadIn, err := platform.NewPermissionAtID(bInID, platform.ReadAction, platform.BucketsResource, oID)
+	pReadIn, err := platform.NewPermissionAtID(bInID, platform.ReadAction, platform.BucketsResourceType, oID)
 	if err != nil {
 		log.Fatalf("Failed to build permission for reading input bucket: %v", err)
 	}
-	pWriteOut, err := platform.NewPermissionAtID(bOutID, platform.WriteAction, platform.BucketsResource, oID)
+	pWriteOut, err := platform.NewPermissionAtID(bOutID, platform.WriteAction, platform.BucketsResourceType, oID)
 	if err != nil {
 		log.Fatalf("Failed to build write output bucket permission: %v", err)
 	}
-	pCreateTask, err := platform.NewPermission(platform.WriteAction, platform.TasksResource, oID)
+	pCreateTask, err := platform.NewPermission(platform.WriteAction, platform.TasksResourceType, oID)
 	if err != nil {
 		log.Fatalf("Failed to build create task permission: %v", err)
 	}
@@ -534,7 +534,7 @@ func createTask() {
 
 	ts := phttp.TaskService{Addr: *apiEndpoint, Token: readWriteCreateAuth.Token}
 	t := &platform.Task{
-		Organization: oID,
+		OrganizationID: oID,
 		Owner: platform.User{
 			ID: uID,
 		},
